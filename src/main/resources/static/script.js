@@ -1,5 +1,6 @@
 let stompClient = null;
 let currentGroupName = null;
+let userName = null;
 
 function connect() {
     let socket = new SockJS("/server1");
@@ -9,36 +10,56 @@ function connect() {
         $("#name-from").addClass('d-none');
         $("#chat-room").removeClass('d-none');
 
-        // SUBSCRIBE
+        // Subscribe to group messages
         stompClient.subscribe(`/topic/${currentGroupName}`, function (response) {
             showMessage(JSON.parse(response.body));
+        });
+
+        // Subscribe to private messages
+        stompClient.subscribe(`/topic/${currentGroupName}/user/${userName}`, function (response) {
+            showPrivateMessage(JSON.parse(response.body));
         });
     });
 }
 
 function showMessage(message) {
-    $("#message-container-table").append(`<tr><td><b>${message.name} :</b> ${message.content}</td></tr>`);
+    if (message.private) {
+        showPrivateMessage(message);
+    } else {
+        $("#message-container-table").append(`<tr><td><b>${message.name} (to everyone):</b> ${message.content}</td></tr>`);
+    }
 }
 
-function sendMessage(message) {
+function showPrivateMessage(message) {
+    $("#message-container-table").append(
+        `<tr><td><b>${message.name} (private to ${message.recipient}):</b> ${message.content}</td></tr>`
+    );
+}
+
+function sendMessage() {
+    let recipient = $("#recipient-value").val().trim();
+    let content = $("#message-value").val();
+    
     let jsonOb = {
-        name: localStorage.getItem("name"),
-        content: $("#message-value").val(),
-        groupName: currentGroupName // Include the groupName
+        name: userName,
+        content: content,
+        groupName: currentGroupName,
+        recipient: recipient,
+        private: recipient !== ''
     };
+    
     stompClient.send("/app/message", {}, JSON.stringify(jsonOb));
+    
+    // Clear message input
+    $("#message-value").val('');
 }
-
-
 
 $(document).ready((e) => {
-
     $("#login").click(() => {
-        let name = $("#name-value").val();
-        let groupName = $("#groupName").val();
-        currentGroupName = groupName; // Store the group name
-        localStorage.setItem("name", name);
-        $("#name-title").html(`Welcome, <b>${name}</b> to group <b>${groupName}</b>`);
+        userName = $("#name-value").val();
+        currentGroupName = $("#groupName").val();
+        localStorage.setItem("name", userName);
+        $("#name-title").html(`Welcome, <b>${userName}</b> to group <b>${currentGroupName}</b>`);
         connect();
     });
 
@@ -48,7 +69,7 @@ $(document).ready((e) => {
 
     $("#logout").click(() => {
         localStorage.removeItem("name");
-        if (stompClient != null) {
+        if (stompClient !== null) {
             stompClient.disconnect();
             $("#name-from").removeClass('d-none');
             $("#chat-room").addClass('d-none');
